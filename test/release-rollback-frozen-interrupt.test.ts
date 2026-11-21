@@ -23,11 +23,11 @@ const posix = test.skipIf(process.platform === "win32");
 
 // Stops the real activation at its first path access after the named on-disk boundary, as a killed updater would.
 const interruptedActivation = `
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { consumerPaths, pointer } from ${JSON.stringify(resolve(import.meta.dir, "../src/release/files.ts"))};
 import { activateRelease, loadInstalled, releasePath } from ${JSON.stringify(resolve(import.meta.dir, "../src/release/state.ts"))};
-const { home, before, after, phase } = JSON.parse(process.argv[1]);
+const { home, before, after, phase } = JSON.parse(readFileSync(0, "utf8"));
 const paths = consumerPaths(home);
 const omp = join(paths.dori, "bin/omp");
 const [nativeBefore, source, target] = [pointer(omp), pointer(paths.live), releasePath(paths, after.current)];
@@ -65,8 +65,13 @@ posix.each(["18.20.0", "18.18.8"])(
     for (const phase of ["journal", "state", "native", "published"] as const) {
       if (pointer(f.paths.live) === oldSource) activateRelease(f.paths, after, before);
       const result = Bun.spawnSync(
-        [process.execPath, "-e", interruptedActivation, JSON.stringify({ home: f.paths.home, before, after, phase })],
-        { env: { HOME: f.paths.home, PATH: process.env["PATH"] }, timeout: 10_000 },
+        // The states travel on stdin: their JSON can exceed the kernel's per-argument limit (E2BIG).
+        [process.execPath, "-e", interruptedActivation],
+        {
+          stdin: Buffer.from(JSON.stringify({ home: f.paths.home, before, after, phase })),
+          env: { HOME: f.paths.home, PATH: process.env["PATH"] },
+          timeout: 10_000,
+        },
       );
       expect(result.exitCode, `${phase}: ${result.stderr.toString()}`).toBe(73);
       const selected = phase === "published" ? oldSource : newSource;
