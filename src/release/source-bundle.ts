@@ -103,20 +103,11 @@ export const bundleEnv = (home: string, bun = process.execPath): Record<string, 
   DORI_TELEMETRY: "0",
   DO_NOT_TRACK: "1",
 });
-export const bundleGit = (argv: readonly string[], cwd: string, home: string, output?: string): Promise<string> =>
-  command(
-    [
-      "/bin/sh",
-      "-c",
-      output === undefined ? 'umask 077; exec "$@"' : 'umask 077; output=$1; shift; exec "$@" > "$output"',
-      "dori-source-git",
-      ...(output === undefined ? [] : [output]),
-      ...args(argv),
-    ],
-    cwd,
-    bundleEnv(home),
-    300_000,
-  );
+export const bundleGit = (argv: readonly string[], cwd: string, home: string, output?: string): Promise<string> => {
+  const script = output === undefined ? 'umask 077; exec "$@"' : 'umask 077; output=$1; shift; exec "$@" > "$output"';
+  const shell = ["/bin/sh", "-c", script, "dori-source-git", ...(output === undefined ? [] : [output])];
+  return command([...shell, ...args(argv)], cwd, bundleEnv(home), 300_000);
+};
 
 function hashChunks(inputs: readonly string[], checkout: string, home: string): string {
   // One synchronous Bun driver keeps admission synchronous while Git children hash in parallel.
